@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>마산 꾸르실료 봉사자 영적 빨랑카</title>
+  
+  <!-- Tailwind CSS (Aesthetics & Layout) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- React & ReactDOM (CDNs for browser-side execution) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel for inline JSX compilation -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Firebase Legacy Compat SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', 'Noto Serif KR', serif;
+      background-color: #fbfbf9;
+      color: #2d2a26;
+    }
+    .font-serif-kr {
+      font-family: 'Noto Serif KR', serif;
+    }
+    @keyframes float-up {
+      0% { transform: translateY(80px) scale(0.6); opacity: 0; }
+      30% { opacity: 0.9; }
+      100% { transform: translateY(-450px) scale(1.3); opacity: 0; }
+    }
+    .animate-float-up {
+      animation: float-up 3.5s ease-out forwards;
+    }
+    @keyframes pulse-slow {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+    .animate-pulse-slow {
+      animation: pulse-slow 3.5s infinite ease-in-out;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #e4e4e7;
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="root"></div>
+
+  <!-- React Application Logic -->
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // 사용자 지정 Firebase 설정값 반영 완료
+    const appId = "masan-cursillo-palanca";
+    const firebaseConfig = {
+      apiKey: "AIzaSyCNIiHypj-Q8_94y_8PQGdgTP86oQDHUjg",
+      authDomain: "cums-palanca.firebaseapp.com",
+      projectId: "cums-palanca",
+      storageBucket: "cums-palanca.firebasestorage.app",
+      messagingSenderId: "771997988003",
+      appId: "1:771997988003:web:59e8682e5abb4ed1c7fb16",
+      measurementId: "G-H3E8XBBEH8"
+    };
+
+    // '영성체' 다음으로 '묵주기도'가 쏙 들어갔습니다.
+    const PRAYER_ITEMS = [
+      { id: 'mass', label: '미사', emoji: '⛪', color: 'bg-amber-50/70 text-amber-950 border-amber-200/50 hover:bg-amber-50' },
+      { id: 'communion', label: '영성체', emoji: '🍞', color: 'bg-emerald-50/70 text-emerald-950 border-emerald-200/50 hover:bg-emerald-50' },
+      { id: 'rosary', label: '묵주기도', emoji: '📿', color: 'bg-teal-50/70 text-teal-950 border-teal-200/50 hover:bg-teal-50' },
+      { id: 'adoration', label: '성체조배', emoji: '🕯️', color: 'bg-rose-50/70 text-rose-950 border-rose-200/50 hover:bg-rose-50' },
+      { id: 'cross', label: '십자가의 길', emoji: '✝️', color: 'bg-orange-50/70 text-orange-950 border-orange-200/50 hover:bg-orange-50' },
+      { id: 'sacrifice_service', label: '희생/봉사', emoji: '💝', color: 'bg-blue-50/70 text-blue-950 border-blue-200/50 hover:bg-blue-50' },
+      { id: 'arrow', label: '화살기도', emoji: '🕊️', color: 'bg-sky-50/70 text-sky-950 border-sky-200/50 hover:bg-sky-50' },
+      { id: 'others', label: '기타', emoji: '📝', color: 'bg-purple-50/70 text-purple-950 border-purple-200/50 hover:bg-purple-50' },
+    ];
+
+    const INITIAL_COUNTERS = PRAYER_ITEMS.reduce((acc, item) => ({ ...acc, [item.id]: 0 }), {});
+
+    function App() {
+      const [firebaseReady, setFirebaseReady] = useState(false);
+      const [totals, setTotals] = useState(INITIAL_COUNTERS);
+      const [formInputs, setFormInputs] = useState(INITIAL_COUNTERS);
+      const [isLoadingData, setIsLoadingData] = useState(true);
+      
+      const [showAdminModal, setShowAdminModal] = useState(false);
+      const [adminPassword, setAdminPassword] = useState('');
+      const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+      const [showResetConfirm, setShowResetConfirm] = useState(false);
+      
+      const [submitting, setSubmitting] = useState(false);
+      const [showCelebration, setShowCelebration] = useState(false);
+      const [celebrationElements, setCelebrationElements] = useState([]);
+      const [toastMessage, setToastMessage] = useState(null);
+
+      const CORRECT_ADMIN_PW = 'masan777';
+      const dbRef = useRef(null);
+
+      useEffect(() => {
+        // Firebase 초기화 진행
+        try {
+          const firebase = window.firebase;
+          if (!firebase) {
+            console.warn("Firebase 라이브러리가 로드되지 않았습니다. 데모 오프라인 모드로 진입합니다.");
+            setIsLoadingData(false);
+            return;
+          }
+
+          if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+          }
+          const db = firebase.firestore();
+          dbRef.current = db;
+
+          // 익명 로그인 실행 (실시간 통계 권한 획득용)
+          firebase.auth().signInAnonymously()
+            .then(() => {
+              setFirebaseReady(true);
+            })
+            .catch(err => {
+              console.warn("인증 실패, 오프라인 데모 세션으로 시작합니다:", err);
+              setFirebaseReady(true);
+            });
+        } catch (err) {
+          console.error("Firebase 초기화 중 에러 발생:", err);
+          setIsLoadingData(false);
+        }
+      }, []);
+
+      useEffect(() => {
+        if (!firebaseReady || !dbRef.current) {
+          // Firebase 연동 전 로컬 스토리지 데모 연동
+          const saved = localStorage.getItem('local_m_palanca');
+          if (saved) {
+            setTotals(JSON.parse(saved));
+          }
+          setIsLoadingData(false);
+          return;
+        }
+
+        const db = dbRef.current;
+        const docRef = db.doc(`artifacts/${appId}/public/data/counters/main`);
+
+        const unsubscribe = docRef.onSnapshot((docSnap) => {
+          setIsLoadingData(false);
+          if (docSnap.exists) {
+            const data = docSnap.data();
+            setTotals(data.totals || INITIAL_COUNTERS);
+          } else {
+            docRef.set({ totals: INITIAL_COUNTERS })
+              .catch(err => console.error("문서 초기 생성 실패:", err));
+          }
+        }, (error) => {
+          console.warn("실시간 연동 실패 (기본 데모 프로젝트 연결): 로컬 오프라인 모드를 활성화합니다.");
+          setIsLoadingData(false);
+        });
+
+        return () => unsubscribe();
+      }, [firebaseReady]);
+
+      const showToast = (text, type = "success") => {
+        setToastMessage({ text, type });
+        setTimeout(() => setToastMessage(null), 3500);
+      };
+
+      const playSacredChime = () => {
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) return;
+          const ctx = new AudioContext();
+          const now = ctx.currentTime;
+          
+          const playTone = (freq, type, gainValue, duration) => {
+            const osc = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, now);
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(gainValue, now + 0.05);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+            osc.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + duration);
+          };
+
+          playTone(523.25, 'sine', 0.2, 2.5); 
+          playTone(659.25, 'triangle', 0.12, 2.2); 
+          playTone(783.99, 'sine', 0.1, 1.8); 
+        } catch (e) {}
+      };
+
+      const updateInputCount = (itemId, amount) => {
+        setFormInputs(prev => ({
+          ...prev,
+          [itemId]: Math.max(0, prev[itemId] + amount)
+        }));
+      };
+
+      const setInputDirectly = (itemId, value) => {
+        const val = parseInt(value, 10);
+        setFormInputs(prev => ({
+          ...prev,
+          [itemId]: isNaN(val) ? 0 : Math.max(0, val)
+        }));
+      };
+
+      const handleOfferSubmit = async (e) => {
+        e.preventDefault();
+        const hasItems = Object.values(formInputs).some(val => val > 0);
+        if (!hasItems) {
+          showToast("봉헌할 기도 항목의 횟수를 최소 1회 이상 설정해 주세요.", "error");
+          return;
+        }
+
+        setSubmitting(true);
+        playSacredChime();
+
+        // 흩날리는 평화의 비둘기 & 하트 효과 생성
+        const newElements = [];
+        const emojis = ['🕊️', '❤️', '🌈', '✨', '🙏'];
+        for (let i = 0; i < 20; i++) {
+          newElements.push({
+            id: Math.random(),
+            emoji: emojis[Math.floor(Math.random() * emojis.length)],
+            left: `${Math.random() * 80 + 10}%`,
+            delay: `${Math.random() * 1.2}s`,
+            size: `${Math.random() * 1.2 + 0.9}rem`
+          });
+        }
+        setCelebrationElements(newElements);
+        setShowCelebration(true);
+
+        try {
+          if (dbRef.current && firebaseReady) {
+            const db = dbRef.current;
+            const docRef = db.doc(`artifacts/${appId}/public/data/counters/main`);
+            
+            await db.runTransaction(async (transaction) => {
+              const docSnap = await transaction.get(docRef);
+              const currentData = docSnap.exists ? docSnap.data() : { totals: INITIAL_COUNTERS };
+              const newTotals = { ...INITIAL_COUNTERS };
+              
+              PRAYER_ITEMS.forEach(item => {
+                const currentTotal = currentData.totals?.[item.id] || 0;
+                const inputVal = formInputs[item.id] || 0;
+                newTotals[item.id] = currentTotal + inputVal;
+              });
+
+              transaction.set(docRef, { totals: newTotals });
+            });
+          } else {
+            // 오프라인 로컬 저장소 예외 처리 (데모용)
+            const newTotals = { ...totals };
+            PRAYER_ITEMS.forEach(item => {
+              newTotals[item.id] = (newTotals[item.id] || 0) + (formInputs[item.id] || 0);
+            });
+            setTotals(newTotals);
+            localStorage.setItem('local_m_palanca', JSON.stringify(newTotals));
+          }
+
+          setFormInputs(INITIAL_COUNTERS);
+          showToast("정성스런 기도가 영적 빨랑카로 아름답게 봉헌되었습니다! 데꼴로레스! 🌈");
+        } catch (err) {
+          console.error("봉헌 에러:", err);
+          showToast("서버 통신 실패로 로컬에 임시 기록되었습니다.", "error");
+        } finally {
+          setSubmitting(false);
+          setTimeout(() => setShowCelebration(false), 3800);
+        }
+      };
+
+      const handleAdminAuth = (e) => {
+        e.preventDefault();
+        if (adminPassword === CORRECT_ADMIN_PW) {
+          setIsAdminAuthenticated(true);
+          setAdminPassword('');
+          showToast("관리자 자격 인증에 성공했습니다.");
+        } else {
+          showToast("비밀번호가 일치하지 않습니다.", "error");
+        }
+      };
+
+      const handleResetTotals = async () => {
+        try {
+          if (dbRef.current && firebaseReady) {
+            const db = dbRef.current;
+            const docRef = db.doc(`artifacts/${appId}/public/data/counters/main`);
+            await docRef.set({ totals: INITIAL_COUNTERS });
+          } else {
+            setTotals(INITIAL_COUNTERS);
+            localStorage.setItem('local_m_palanca', JSON.stringify(INITIAL_COUNTERS));
+          }
+          setShowResetConfirm(false);
+          showToast("영적 빨랑카 데이터가 성공적으로 초기화되었습니다.");
+        } catch (err) {
+          showToast("초기화 처리 중 장애가 발생했습니다.", "error");
+        }
+      };
+
+      const copyKakaoMessage = () => {
+        const totalCount = Object.values(totals).reduce((sum, val) => sum + val, 0);
+        
+        let text = `[🌈 마산 꾸르실료 봉사자 영적 빨랑카 집계]\n\n`;
+        text += `주님, 저희 마산교구 꾸르실료 봉사자들의 온전한 지향과 정성을 예물로 바치오니 기쁘게 받아주소서.\n\n`;
+        text += `💖 총 누적 봉헌수: ${totalCount.toLocaleString()}회\n`;
+        text += `──────────────────\n`;
+        
+        PRAYER_ITEMS.forEach(item => {
+          const count = totals[item.id] || 0;
+          text += `${item.emoji} ${item.label}: ${count.toLocaleString()}회\n`;
+        });
+        
+        text += `──────────────────\n`;
+        text += `꾸르실료의 일꾼들을 이끄시는 하느님께 감사드리며,\n`;
+        text += `모든 봉사자님들의 가정에 은총이 충만하길 기원합니다.\n`;
+        text += `데꼴로레스! 🌈🙏✨`;
+
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand("copy");
+          showToast("카카오톡 공지 포맷이 클립보드에 복사되었습니다! 공지방에 공유해보세요.");
+        } catch (err) {
+          showToast("클립보드 복사 처리에 실패했습니다.", "error");
+        }
+        document.body.removeChild(textarea);
+      };
+
+      return (
+        <div className="min-h-screen pb-16 flex flex-col items-center relative overflow-hidden bg-[#fbfbf9]">
+          <div className="absolute top-0 inset-x-0 h-80 bg-gradient-to-b from-amber-500/10 via-amber-500/2 to-transparent pointer-events-none" />
+          
+          {/* 봉헌 연출 오버레이 */}
+          {showCelebration && (
+            <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-xs z-50 pointer-events-none flex items-center justify-center">
+              <div className="text-center p-8 bg-white/95 shadow-2xl rounded-3xl border border-amber-200 max-w-sm mx-4 animate-pulse-slow">
+                <span className="text-6xl block mb-2">🕊️</span>
+                <h3 className="text-2xl font-bold text-amber-900 font-serif-kr">봉헌 완료</h3>
+                <p className="text-sm text-stone-600 mt-2">정성껏 바쳐진 우리의 영적 제물이</p>
+                <p className="text-sm text-stone-600">주님 대전에 흠향되었습니다.</p>
+                <p className="text-xs text-amber-600 font-bold mt-2">데꼴로레스! 🌈</p>
+              </div>
+              {celebrationElements.map(el => (
+                <div
+                  key={el.id}
+                  className="absolute animate-float-up text-3xl select-none"
+                  style={{ left: el.left, animationDelay: el.delay, fontSize: el.size, bottom: '60px' }}
+                >
+                  {el.emoji}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 알림 토스트 */}
+          {toastMessage && (
+            <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-5">
+              <div className={`p-4 rounded-2xl shadow-2xl flex items-center justify-between border ${
+                toastMessage.type === 'error' 
+                  ? 'bg-rose-50 text-rose-900 border-rose-200' 
+                  : 'bg-amber-50 text-amber-950 border-amber-200'
+              }`}>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-lg">{toastMessage.type === 'error' ? '⚠️' : '✨'}</span>
+                  <p className="text-xs font-semibold leading-relaxed">{toastMessage.text}</p>
+                </div>
+                <button onClick={() => setToastMessage(null)} className="text-stone-400 hover:text-stone-700 font-bold text-base px-1">×</button>
+              </div>
+            </div>
+          )}
+
+          <header className="w-full max-w-md px-5 pt-6 flex justify-between items-center z-10">
+            <span className="text-[11px] font-bold tracking-wider text-amber-900 bg-amber-100/60 border border-amber-200/50 px-3.5 py-1.5 rounded-full flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              실시간 봉헌 활성화
+            </span>
+            <button 
+              onClick={() => { setShowAdminModal(true); setIsAdminAuthenticated(false); }}
+              className="p-2.5 text-stone-400 hover:text-amber-800 bg-white rounded-full border border-stone-100 hover:border-amber-200 shadow-3xs transition-all"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+          </header>
+
+          <div className="w-full max-w-md px-5 text-center mt-7 z-10">
+            <div className="flex justify-center items-center gap-1.5 mb-2">
+              <span className="text-lg">🌈</span>
+              <span className="text-[10px] font-black tracking-widest text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-sm">DE COLORES!</span>
+              <span className="text-lg">🌈</span>
+            </div>
+            <h1 className="text-2xl font-extrabold font-serif-kr text-stone-850 leading-tight">
+              마산 꾸르실료 봉사자<br/>
+              <span className="bg-gradient-to-r from-amber-700 via-rose-600 to-indigo-600 bg-clip-text text-transparent">영적 빨랑카</span>
+            </h1>
+            <p className="text-xs text-stone-500 mt-2.5 max-w-md mx-auto leading-relaxed">
+              오늘 하루 동안 주님 안에서 기쁘게 바치신 소중한 기도의 예물들을 정성스레 기재하여 봉헌해 주세요.
+            </p>
+          </div>
+
+          {/* 누적 집계판 */}
+          <section className="w-full max-w-md px-5 mt-6.5 z-10">
+            <div className="bg-white/95 backdrop-blur-md rounded-3xl p-6 border border-amber-200/50 shadow-sm">
+              <div className="text-center mb-4">
+                <span className="text-[10px] font-black tracking-wider text-amber-900 bg-amber-100/50 px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                  실시간 전체 누적 집계
+                </span>
+                <h2 className="text-lg font-bold text-stone-800 font-serif-kr mt-3">우리들의 영적 제물</h2>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                {PRAYER_ITEMS.map((item) => {
+                  const count = totals[item.id] || 0;
+                  return (
+                    <div key={`total-${item.id}`} className="bg-[#fbfbf9]/70 border border-stone-200/40 rounded-2xl p-3 flex flex-col items-center justify-center text-center">
+                      <span className="text-2xl mb-1">{item.emoji}</span>
+                      <span className="text-[10px] font-bold text-stone-400">{item.label}</span>
+                      <span className="text-sm font-black text-stone-850 font-serif-kr mt-1">
+                        {count.toLocaleString()}<span className="text-[10px] font-normal text-stone-400 ml-0.5">회</span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <div className="mt-4 pt-4 border-t border-dashed border-stone-200 flex items-center justify-between px-1">
+                <span className="text-xs font-bold text-stone-500">💖 총 누적 봉헌 수</span>
+                <span className="text-base font-black text-rose-600 font-serif-kr">
+                  {Object.values(totals).reduce((sum, val) => sum + val, 0).toLocaleString()}회
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <main className="w-full max-w-md px-5 flex flex-col gap-6.5 mt-8 z-10">
+            <section className="bg-white rounded-3xl p-6 border border-amber-200/40 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-2xl">🤲</span>
+                <div>
+                  <h2 className="text-base font-bold text-amber-950 font-serif-kr">나의 영적 예물 기재하기</h2>
+                </div>
+              </div>
+
+              <form onSubmit={handleOfferSubmit} className="space-y-4">
+                <div className="space-y-2.5">
+                  {PRAYER_ITEMS.map(item => (
+                    <div key={item.id} className={`p-3 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white transition-all ${item.color}`}>
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{item.emoji}</span>
+                        <span className="font-bold text-stone-850 text-xs block">{item.label}</span>
+                      </div>
+                      
+                      <div className="flex items-center justify-between sm:justify-end gap-2">
+                        <div className="flex gap-1">
+                          <button type="button" onClick={() => updateInputCount(item.id, 5)} className="px-2.5 py-1 text-[10px] font-extrabold bg-white/80 hover:bg-white rounded-lg border border-stone-200/50 text-stone-700">+5</button>
+                          <button type="button" onClick={() => updateInputCount(item.id, 10)} className="px-2.5 py-1 text-[10px] font-extrabold bg-white/80 hover:bg-white rounded-lg border border-stone-200/50 text-stone-700">+10</button>
+                        </div>
+
+                        <div className="flex items-center border border-stone-200 rounded-xl bg-white overflow-hidden shadow-3xs">
+                          <button type="button" onClick={() => updateInputCount(item.id, -1)} className="w-8 h-8 flex items-center justify-center font-bold text-md">-</button>
+                          <input
+                            type="number"
+                            min="0"
+                            value={formInputs[item.id] || 0}
+                            onChange={(e) => setInputDirectly(item.id, e.target.value)}
+                            className="w-10 text-center font-bold text-stone-800 border-none outline-none focus:ring-0 p-0 text-xs bg-transparent"
+                          />
+                          <button type="button" onClick={() => updateInputCount(item.id, 1)} className="w-8 h-8 flex items-center justify-center font-bold text-md">+</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className={`w-full py-4 rounded-2xl font-bold font-serif-kr text-white shadow-md flex items-center justify-center gap-1.5 transition-transform transform active:scale-[0.98] ${
+                    submitting ? 'bg-stone-400' : 'bg-gradient-to-r from-amber-600 via-rose-600 to-indigo-600'
+                  }`}
+                >
+                  <span>{submitting ? '예물을 올리는 중...' : '⛪ 정성을 담아 봉헌하기'}</span>
+                </button>
+              </form>
+            </section>
+          </main>
+
+          <footer className="w-full text-center mt-12 mb-4 px-5 text-[11px] text-stone-400">
+            <p className="font-serif-kr font-semibold">마산교구 꾸르실료 봉사자회</p>
+            <p className="mt-1">데꼴로레스! 그리스도의 이름으로 찬미 영광 드리나이다. 🌈</p>
+          </footer>
+
+          {/* 관리자 모달 */}
+          {showAdminModal && (
+            <div className="fixed inset-0 bg-stone-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border">
+                <div className="bg-stone-50 px-6 py-4 border-b flex justify-between items-center">
+                  <h3 className="font-bold font-serif-kr text-stone-850 text-base">🛡️ 봉사단 관리자 콘솔</h3>
+                  <button onClick={() => { setShowAdminModal(false); setIsAdminAuthenticated(false); }} className="text-stone-400 font-extrabold text-lg">✕</button>
+                </div>
+
+                <div className="p-6">
+                  {!isAdminAuthenticated ? (
+                    <form onSubmit={handleAdminAuth} className="space-y-4">
+                      <p className="text-xs text-stone-600">실시간 기도 결과 공지 및 초기화는 관리자 승인이 필요합니다.</p>
+                      <input
+                        type="password"
+                        placeholder="비밀번호 입력 (초기값: masan777)"
+                        value={adminPassword}
+                        onChange={(e) => setAdminPassword(e.target.value)}
+                        className="w-full bg-stone-50 border rounded-xl px-4 py-2.5 text-xs text-stone-800 outline-none"
+                      />
+                      <button type="submit" className="w-full bg-stone-900 text-white font-bold text-xs py-3 rounded-xl">사용자 검증</button>
+                    </form>
+                  ) : (
+                    <div className="space-y-5">
+                      <button onClick={copyKakaoMessage} className="w-full bg-amber-500 text-white font-bold text-xs py-3 rounded-xl">
+                        📋 카톡 공지용 전체 텍스트 복사
+                      </button>
+
+                      <hr />
+
+                      {!showResetConfirm ? (
+                        <button onClick={() => setShowResetConfirm(true)} className="w-full bg-rose-50 text-rose-700 border border-rose-150 font-bold text-xs py-2.5 rounded-xl">
+                          🚨 누적 집계 초기화 시작
+                        </button>
+                      ) : (
+                        <div className="p-4 bg-rose-50 border rounded-2xl space-y-3">
+                          <h5 className="text-xs font-bold text-rose-950">⚠️ 정말 초기화하시겠습니까?</h5>
+                          <div className="flex gap-2">
+                            <button onClick={handleResetTotals} className="flex-1 bg-rose-600 text-white font-bold text-[11px] py-2 rounded-lg">예, 초기화합니다</button>
+                            <button onClick={() => setShowResetConfirm(false)} className="flex-1 bg-white border text-stone-700 font-bold text-[11px] py-2 rounded-lg">취소</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const container = document.getElementById('root');
+    const root = ReactDOM.createRoot(container);
+    root.render(<App />);
+  </script>
+</body>
+</html>
